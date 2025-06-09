@@ -48,7 +48,7 @@ print(f"✅ Exported cleaned data to: {excel_path}")
 # Visualization Functions
 # -----------------------------
 
-def save_pie_chart(series, title, filename, min_pct=2):
+def save_pie_chart(series, title, filename, min_pct=3):
     series = series[series != "Missing"]
     total = len(series)
     if total == 0:
@@ -70,7 +70,7 @@ def save_pie_chart(series, title, filename, min_pct=2):
     plt.savefig(os.path.join(output_dir, filename))
     plt.close()
 
-def save_bar_chart(series, title, filename, min_count=5):
+def save_bar_chart(series, title, filename, min_count=3):
     original_len = len(series)
     series = series[series != "Missing"]
     counts = series.value_counts()
@@ -135,14 +135,17 @@ if excluded_pct > 0:
     print(f"⚠️ Sankey: Dropped {excluded_pct:.1f}% of rows with missing data.")
 
 # Collapse rare categories into 'Other'
-def collapse_rare(df, col, min_count=5):
+def collapse_rare(df, col, min_count=2):
     counts = df[col].value_counts()
     rare = counts[counts < min_count].index
-    df[col] = df[col].apply(lambda x: "Other" if x in rare else x)
+    level_name = col.split()[-1]  # e.g., "Employer"
+    label = f"Other - {level_name}"
+    df[col] = df[col].apply(lambda x: label if x in rare else x)
     return df
 
+
 for col in df_sankey.columns:
-    df_sankey = collapse_rare(df_sankey, col, min_count=5)
+    df_sankey = collapse_rare(df_sankey, col)
 
 # Rebuild node list
 levels = list(df_sankey.columns)
@@ -172,30 +175,64 @@ for i in range(len(levels) - 1):
         target.append(tgt)
         value.append(row['count'])
 
-# Create scrollable Sankey layout
+import matplotlib.colors as mcolors
+
+# Assign distinct colors per level
+def get_level_colors(levels, df):
+    level_color_map = {}
+    available_colors = list(mcolors.TABLEAU_COLORS.values()) + list(mcolors.XKCD_COLORS.values())
+    for i, level in enumerate(levels):
+        values = df[level].unique()
+        color = available_colors[i * 3 % len(available_colors)]
+        level_color_map.update({val: color for val in values})
+    return level_color_map
+
+# Generate color for each node label
+node_colors = []
+level_color_map = get_level_colors(levels, df_sankey)
+
+for level in levels:
+    for val in df_sankey[level].unique():
+        node_colors.append(level_color_map.get(val, "lightgrey"))
+
+# Enhanced Sankey diagram
 fig = go.Figure(data=[go.Sankey(
     arrangement="snap",
     node=dict(
-        pad=15,
-        thickness=15,
+        pad=20,
+        thickness=20,
+        line=dict(color="black", width=0.5),
         label=all_labels,
-        color="lightblue"
+        color=node_colors,
+        hoverlabel=dict(bgcolor='white', font_size=13, font_family="Arial")
     ),
     link=dict(
         source=source,
         target=target,
-        value=value
+        value=value,
+        color='rgba(160,160,160,0.3)'
     )
 )])
 
 fig.update_layout(
-    title_text="BBS Alumni Flow: Program → Industry → Employer → Position",
-    font_size=10,
-    autosize=False,
+    title=dict(
+        text="BBS Alumni Flow: Program → Industry → Employer → Position",
+        font=dict(size=20),
+        x=0.01,
+        xanchor='left'
+    ),
+    font=dict(
+        family="Arial",
+        size=13,
+        color="black"
+    ),
+    margin=dict(l=20, r=20, t=60, b=20),
+    paper_bgcolor='white',
+    plot_bgcolor='white',
     width=1800,
-    height=max(800, 30 * len(all_labels)),
+    height=max(800, 30 * len(all_labels))
 )
 
 fig.write_html(os.path.join(output_dir, "bbs_flow_sankey.html"))
-print("✅ Sankey diagram saved as scrollable HTML.")
-print("📊 All outputs saved in 'outputs/'")
+print("✅ Styled Sankey diagram saved as scrollable HTML.")
+
