@@ -1,3 +1,9 @@
+# Ignore everything that starts with "plot" (e.g., plot1.png, plotting_script.py)
 plot*
-plots/*
-*Data*
+
+# Ignore everything in the plots/ directory
+plots/
+
+# Ignore files with 'Data' in the name, EXCEPT .py files
+*[Dd]ata*
+!*[Dd]ata*.py
