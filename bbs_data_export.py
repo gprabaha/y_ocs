@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import plotly.graph_objects as go
 import os
 
@@ -32,7 +33,7 @@ columns_to_export = [
 available_cols = [col for col in columns_to_export if col in bbs_df.columns]
 missing_cols = set(columns_to_export) - set(available_cols)
 if missing_cols:
-    print(f"⚠️ Missing columns: {missing_cols}")
+    print(f"Missing columns: {missing_cols}")
 
 # Clean and standardize missing values
 export_df = bbs_df[available_cols].copy()
@@ -42,7 +43,7 @@ export_df.fillna("Missing", inplace=True)
 # Save cleaned Excel
 excel_path = os.path.join(output_dir, "bbs_current_positions.xlsx")
 export_df.to_excel(excel_path, index=False)
-print(f"✅ Exported cleaned data to: {excel_path}")
+print(f"Exported cleaned data to: {excel_path}")
 
 # -----------------------------
 # Visualization Functions
@@ -52,7 +53,7 @@ def save_pie_chart(series, title, filename, min_pct=3):
     series = series[series != "Missing"]
     total = len(series)
     if total == 0:
-        print(f"⚠️ {title}: No non-missing data to plot.")
+        print(f"WARNING! {title}: No non-missing data to plot.")
         return
     counts = series.value_counts()
     counts = counts.sort_values(ascending=False)
@@ -76,11 +77,11 @@ def save_bar_chart(series, title, filename, min_count=3):
     counts = series.value_counts()
     missing_pct = 100 * (original_len - len(series)) / original_len
     if missing_pct > 0:
-        print(f"⚠️ {title}: Dropped {missing_pct:.1f}% missing entries.")
+        print(f"WARNING! {title}: Dropped {missing_pct:.1f}% missing entries.")
 
     counts = counts[counts >= min_count]
     if counts.empty:
-        print(f"⚠️ {title}: No values with count >= {min_count}. Skipping plot.")
+        print(f"WARNING! {title}: No values with count >= {min_count}. Skipping plot.")
         return
 
     plt.figure(figsize=(10, max(4, 0.3 * len(counts))))
@@ -90,6 +91,49 @@ def save_bar_chart(series, title, filename, min_count=3):
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, filename))
     plt.close()
+
+
+def plot_grouped_bar_subplots(df, group_col, value_col, output_filename, min_count=3):
+    """
+    Generates horizontal bar subplots of `value_col`, grouped by `group_col`.
+    Each subplot corresponds to a unique value in `group_col`.
+    """
+    groups = df[group_col].unique()
+    groups = [g for g in groups if g != "Missing"]
+    num_groups = len(groups)
+    
+    fig, axes = plt.subplots(
+        num_groups, 1,
+        figsize=(12, max(3 * num_groups, 4)),
+        constrained_layout=True
+    )
+
+    if num_groups == 1:
+        axes = [axes]  # make iterable if only one subplot
+
+    for ax, group in zip(axes, groups):
+        sub_df = df[df[group_col] == group]
+        series = sub_df[value_col]
+        series = series[series != "Missing"]
+        counts = series.value_counts()
+        counts = counts[counts >= min_count]
+
+        if counts.empty:
+            ax.set_title(f"{group} (No data ≥ min count)")
+            ax.axis('off')
+            continue
+
+        counts.sort_values().plot(kind='barh', ax=ax)
+        ax.set_title(f"{group_col} = {group}")
+        ax.set_xlabel("Number of Individuals")
+
+    fig.suptitle(
+        f"{value_col} grouped by {group_col}",
+        fontsize=16, x=0.01, ha='left'
+    )
+    plt.savefig(os.path.join(output_dir, output_filename))
+    plt.close()
+
 
 # -----------------------------
 # Summary Visualizations
@@ -119,6 +163,36 @@ save_bar_chart(
     filename="aauude_major_position_bar.png"
 )
 
+# By AAUDE_Major_Industry
+plot_grouped_bar_subplots(
+    export_df,
+    group_col='AAUDE_Major_Industry',
+    value_col='GPR_Most Recent Known Employer',
+    output_filename='employers_by_industry.png'
+)
+
+plot_grouped_bar_subplots(
+    export_df,
+    group_col='AAUDE_Major_Industry',
+    value_col='GPR_Most Recent Known Employment Position',
+    output_filename='positions_by_industry.png'
+)
+
+# By AAUDE_Major_Position
+plot_grouped_bar_subplots(
+    export_df,
+    group_col='AAUDE_Major_Position',
+    value_col='GPR_Most Recent Known Employer',
+    output_filename='employers_by_position.png'
+)
+
+plot_grouped_bar_subplots(
+    export_df,
+    group_col='AAUDE_Major_Position',
+    value_col='GPR_Most Recent Known Employment Position',
+    output_filename='positions_by_position.png'
+)
+
 # -----------------------------
 # Sankey Diagram (Scrollable HTML)
 # -----------------------------
@@ -132,7 +206,7 @@ initial_count = len(df_sankey)
 df_sankey = df_sankey[~df_sankey.eq("Missing").any(axis=1)]
 excluded_pct = 100 * (initial_count - len(df_sankey)) / initial_count
 if excluded_pct > 0:
-    print(f"⚠️ Sankey: Dropped {excluded_pct:.1f}% of rows with missing data.")
+    print(f"WARNING! Sankey: Dropped {excluded_pct:.1f}% of rows with missing data.")
 
 # Collapse rare categories into 'Other'
 def collapse_rare(df, col, min_count=2):
@@ -175,7 +249,6 @@ for i in range(len(levels) - 1):
         target.append(tgt)
         value.append(row['count'])
 
-import matplotlib.colors as mcolors
 
 # Assign distinct colors per level
 def get_level_colors(levels, df):
@@ -234,5 +307,5 @@ fig.update_layout(
 )
 
 fig.write_html(os.path.join(output_dir, "bbs_flow_sankey.html"))
-print("✅ Styled Sankey diagram saved as scrollable HTML.")
+print("Styled Sankey diagram saved as scrollable HTML.")
 
